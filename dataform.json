@@ -1,0 +1,8 @@
+{
+    "warehouse": "bigquery",
+    "defaultSchema": "dataform",
+    "assertionSchema": "dataform_assertions",
+    "defaultDatabase": "skutopia-work-8c9",
+    "useRunCache": false,
+    "defaultLocation": "australia-southeast1"
+}
