@@ -1,0 +1,2 @@
+config { type: "view", tags:"wms_fc_event_views",  schema:"dataform_sri_silver",name : "wms_fc_event_pick_port_opening_v"}  
+ select warehouse_id, id event_id, type event_type, created_at event_created_at,payload.portId from ${ ref('dataform_sri_silver','wms_fc_core_event_store')} where   warehouse_id = "1Z2BKJZVK7" and type="PICK_PORT_OPENING"

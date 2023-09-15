@@ -1,0 +1,6 @@
+config {
+    type: "declaration", 
+    schema: "PROD",
+    name: "wms_core_event_store",
+    description: "source SSP data. Populated by Google Datastream"
+  }
