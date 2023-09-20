@@ -1,0 +1,42 @@
+config {
+    type: "table", 
+    schema: "siver",
+    name: "wms_events",
+    tags: "wms_events",
+    description: "Standardized waretopia events",
+    bigquery: {
+      partitionBy: "DATETIME_TRUNC(publish_time, MONTH)",
+      clusterBy: ["type"]
+    }
+}
+
+SELECT 
+  json_value(data, '$.payload.salesOrder.id') orderId, 
+  json_value(data, '$.payload.salesOrder.source') orderSource, 
+  json_value(data, '$.payload.salesOrder.orderReference') orderReference, 
+  json_value(data, '$.payload.fulfilmentShipment.isFcFulfilable') fcFulfilable, 
+  json_value(data, '$.payload.organization.id') organisationId,
+  json_value(data, '$.type') type,
+  json_value(data, '$.payload.fulfilmentShipment.id') fulfilmentShipmentId,
+  json_value(data, '$.payload.fulfilmentShipment.source') fulfilmentSource,
+  coalesce(json_value(data, '$.payload.fulfilmentShipment.trackingNumber'),json_value(data, '$.payload.trackingNumber')) fulfilmentTrackingNumber, 
+  json_query(data, '$.payload.fulfilmentShipments') fulfilmentShipments,
+  json_value(data, '$.payload.fulfilmentShipments[0].status') fulfilmentStatus,
+  json_query(data, '$.payload.senderAddress') senderAddress,
+  struct (json_value(data, '$.payload.store.id') as id, json_value(data, '$.payload.store.name') as name, 
+    json_value(data, '$.payload.store.isTest') as isTest,
+    json_value(data, '$.payload.store.fbsEnabled') as fbsEnabled) store,
+  json_query(data, '$.payload.lineItems') lineItems,
+  json_query(data, '$.payload.salesOrder.shippingAddress') shippingAddress,
+  json_query(data, '$.payload.rateRequest') rateRequest, 
+  json_query(data, '$.payload.shippingRate') shippingRate, 
+  json_value(data, '$.payload.shippingMethod') shippingMethod,
+  json_value(data, '$.payload.carrier') carrier, 
+  struct (json_value(data, '$.payload.baseAmount.value') as value, 
+          json_value(data, '$.payload.baseAmount.currency') as currency,
+          json_value(data, '$.payload.additionalCharges.tax.value') as taxValue,
+          json_value(data, '$.payload.additionalCharges.tax.currency') as taxCurrency
+          ) as baseAmount,
+  publish_time,
+  data 
+FROM ${ref(dataform.projectConfig.vars.bqPublishSource.dataset, dataform.projectConfig.vars.bqPublishSource.tableWaretopia)} 

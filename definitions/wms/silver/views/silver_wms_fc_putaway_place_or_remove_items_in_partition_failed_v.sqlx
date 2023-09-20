@@ -1,2 +1,0 @@
-config { type: "view", tags:"wms_fc_event_views",  schema:"dataform_sri_silver",name : "wms_fc_event_putaway_place_or_remove_items_in_partition_failed_v"}  
- select warehouse_id, id event_id, type event_type, created_at event_created_at,payload.actualBarcode, payload.expectedBarcode, payload.partitionNumber, payload.portId, payload.quantity, payload.reason, payload.retailUnitBarcode, payload.transferId from ${ ref('dataform_sri_silver','wms_fc_core_event_store')} where   warehouse_id = "1Z2BKJZVK7" and type="PUTAWAY_PLACE_OR_REMOVE_ITEMS_IN_PARTITION_FAILED"

@@ -1,0 +1,7 @@
+config {
+    type: "declaration", 
+    database: dataform.projectConfig.vars.bqPublishSource.project,
+    schema: dataform.projectConfig.vars.bqPublishSource.dataset,
+    name: dataform.projectConfig.vars.bqPublishSource.tableWaretopia,
+    description: "Waretopia PubSub Event Messages"
+  }

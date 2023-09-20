@@ -4,5 +4,13 @@
     "assertionSchema": "dataform_sri_assertions",
     "defaultDatabase": "skutopia-work-8c9",
     "useRunCache": false,
-    "defaultLocation": "australia-southeast1"
+    "defaultLocation": "australia-southeast1",
+    "vars": {
+        "bqPublishSource" : {
+            "project": "skutopia-production",
+            "dataset": "pubsubprd",
+            "tableSkutopia": "skutopia-messages-prd",
+            "tableWaretopia": "waretopia-messages-prd"
+        }
+      }
 }
