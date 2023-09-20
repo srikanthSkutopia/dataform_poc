@@ -1,0 +1,9 @@
+config {
+    type: "table", 
+    schema: "dataform_sri_silver",
+    name: "wms_fc_core_event_sample",
+    tags: "wms_fc_pipeline",
+    description: "Sample test table"
+  }
+
+  select 1 as a, 2 as b
