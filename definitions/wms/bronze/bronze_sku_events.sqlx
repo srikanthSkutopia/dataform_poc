@@ -1,7 +1,9 @@
 config {
     type: "declaration", 
-    ddatabase: dataform.projectConfig.vars.bqPublishSource.project,
-    schema: dataform.projectConfig.vars.bqPublishSource.dataset,
-    name: dataform.projectConfig.vars.bqPublishSource.tableSkutopia,
+    database: "skutopia-production",
+    schema: "pubsubprd",
+    name: "skutopia-messages-prd",
     description: "Skutopia PubSub Event Messages"
   }
+
+  FROM ${ref(dataform.projectConfig.vars.eventProject, dataform.projectConfig.vars.tableWaretopia)} 

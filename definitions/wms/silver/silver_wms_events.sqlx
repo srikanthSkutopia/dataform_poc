@@ -39,4 +39,4 @@ SELECT
           ) as baseAmount,
   publish_time,
   data 
-FROM ${ref(dataform.projectConfig.vars.bqPublishSource.dataset, dataform.projectConfig.vars.bqPublishSource.tableWaretopia)} 
+FROM ${ref("skutopia-production", "waretopia-messages-prd")} 

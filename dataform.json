@@ -1,16 +1,14 @@
 {
     "warehouse": "bigquery",
-    "defaultSchema": "dataform_sri",
-    "assertionSchema": "dataform_sri_assertions",
+    "defaultSchema": "dataform",
+    "assertionSchema": "dataform_assertions",
     "defaultDatabase": "skutopia-work-8c9",
     "useRunCache": false,
     "defaultLocation": "australia-southeast1",
     "vars": {
-        "bqPublishSource" : {
-            "project": "skutopia-production",
-            "dataset": "pubsubprd",
-            "tableSkutopia": "skutopia-messages-prd",
-            "tableWaretopia": "waretopia-messages-prd"
-        }
-      }
+        "eventProject": "skutopia-production",
+        "eventDataset": "pubsubprd",
+        "tableSkutopia": "skutopia-messages-prd",
+        "tableWaretopia": "waretopia-messages-prd"
+    }
 }
