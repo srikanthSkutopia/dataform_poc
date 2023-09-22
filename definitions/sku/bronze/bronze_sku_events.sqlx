@@ -5,5 +5,4 @@ config {
     name: "skutopia-messages-prd",
     description: "Skutopia PubSub Event Messages"
   }
-
-  FROM ${ref(dataform.projectConfig.vars.eventProject, dataform.projectConfig.vars.tableWaretopia)} 
+ 

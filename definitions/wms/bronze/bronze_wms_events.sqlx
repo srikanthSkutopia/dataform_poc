@@ -1,7 +1,7 @@
 config { 
     type: "declaration", 
-    database: "skutopia-production", 
-    schema: "pubsubprd",
-    name: "waretopia-messages-prd",
+    database: dataform.projectConfig.vars.eventProject, 
+    schema: dataform.projectConfig.vars.eventDataset,
+    name: dataform.projectConfig.vars.tableWaretopia,
     description: "Waretopia PubSub Event Messages"
   }

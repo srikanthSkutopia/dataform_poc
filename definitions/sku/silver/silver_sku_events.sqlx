@@ -1,8 +1,8 @@
 config {
     type: "incremental", 
     schema: "siver",
-    name: "wms_events",
-    tags: "wms_events_pipeline",
+    name: "sku_events",
+    tags: "sku_events_pipeline",
     description: "Standardized waretopia events",
     bigquery: {
       partitionBy: "DATETIME_TRUNC(publish_time, MONTH)",
@@ -28,6 +28,7 @@ SELECT
     json_value(data, '$.payload.store.fbsEnabled') as fbsEnabled) store,
   json_query(data, '$.payload.lineItems') lineItems,
   json_query(data, '$.payload.salesOrder.shippingAddress') shippingAddress,
+
   json_query(data, '$.payload.rateRequest') rateRequest, 
   json_query(data, '$.payload.shippingRate') shippingRate, 
   json_value(data, '$.payload.shippingMethod') shippingMethod,
@@ -40,5 +41,5 @@ SELECT
   publish_time,
   data payload,
   ${utils.auditColumns()}
-FROM ${ref(dataform.projectConfig.vars.eventDataset, dataform.projectConfig.vars.tableWaretopia)} 
+FROM ${ref(dataform.projectConfig.vars.eventDataset, dataform.projectConfig.vars.tableSkutopia)} 
 ${ when(incremental(), `WHERE timestamp > (SELECT MAX(publish_time) FROM ${self()})`) }

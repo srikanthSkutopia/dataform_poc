@@ -9,6 +9,6 @@
         "eventProject": "skutopia-production",
         "eventDataset": "pubsubprd",
         "tableSkutopia": "skutopia-messages-prd",
-        "tableWaretopia": "waretopia-messages-prd"
+        "tableWaretopia": "waretopia-messages-prod"
     }
 }
