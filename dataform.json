@@ -6,9 +6,8 @@
     "useRunCache": false,
     "defaultLocation": "australia-southeast1",
     "vars": {
-        "eventProject": "skutopia-production",
-        "eventDataset": "pubsubprd",
-        "tableSkutopia": "skutopia-messages-prd",
-        "tableWaretopia": "waretopia-messages-prod"
+        "eventProject": "skutopia-work-8c9",
+        "eventDataset": "PROD", 
+        "tableWaretopia": "wms_core_event_store"
     }
 }

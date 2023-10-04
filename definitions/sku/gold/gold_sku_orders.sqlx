@@ -1,0 +1,17 @@
+
+config {
+    type: "table", 
+    schema: "gold",
+    name: "sku_orders",
+    tags: "sku_order_pipeline",
+    disabled: false,
+    description: "Contains all Order information"
+}
+
+
+select so.salesOrderId, fs.fulfilmentShipmentId,  so.storeId, so.createdAt, so.orderStatus, so.totalPrice, so.lineItems,
+struct ( fs.source, fs.error, fs.carrier, fs.serviceType, fs.shippedAt, fs.fulfilmentService, fs.status, fs.createdAt,  fs.updatedAt, fs.deliveredAt, fs.trackingNumber, fs.baseCost, fs.totalCost, fs.totalMargin) sku_fulfilment,
+${utils.auditColumns()}
+from 
+ ${ref("silver", "sku_sales_order")}    so
+LEFT JOIN  ${ref("silver", "sku_fulfilment_shipment")} fs  using (salesOrderId)

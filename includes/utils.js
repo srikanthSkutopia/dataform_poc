@@ -1,8 +1,15 @@
 function auditColumns() {
-    return `
-        current_timestamp as sys_insert_ts,
-        current_timestamp as sys_update_ts
+    return `current_timestamp as sys_insert_ts,
+current_timestamp as sys_update_ts
       `;
   }
 
-  module.exports = { auditColumns };
+
+function scd2() {
+    const template = ```
+
+INPROGRESS 
+    ```
+}
+
+  module.exports = { auditColumns,scd2 };

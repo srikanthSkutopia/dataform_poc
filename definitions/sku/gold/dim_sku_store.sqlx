@@ -1,0 +1,29 @@
+config {
+    type: "incremental", 
+    schema: "gold",
+    name: "dim_sku_store",
+    tags: "sku_order_pipeline",
+    disabled: true,
+    description: "Contains all Store information",
+    uniqueKey: ["storeId"]
+}
+
+SELECT DISTINCT 
+  json_value(data, '$.payload.store.id') storeId,
+  coalesce(json_value(data, '$.payload.store.organizationId'),json_value(data, '$.payload.organization.id')) organizationId,
+  json_value(data, '$.payload.store.name') storeName,
+  cast(json_value(data, '$.payload.store.isTest') as boolean) isTest,
+  PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', json_value(data, '$.payload.store.createdAt')) createdAt,
+  PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', json_value(data, '$.payload.store.updatedAt')) updatedAt,
+  json_value(data, '$.payload.store.fbsEnabled') fbsEnabled,
+  json_value(data, '$.payload.store.brandLogoPath') brandLogoPath,
+  
+  json_value(data, '$.payload.store.releaseChannel') releaseChannel,
+  json_value(data, '$.payload.store.includeInReporting') includeInReporting,
+  json_value(data, '$.payload.store.useBrandedReturnsPortal') useBrandedReturnsPortal,
+  json_value(data, '$.payload.store.useBrandedTrackingPortal') useBrandedTrackingPortal,
+  ${utils.auditColumns()}
+FROM 
+     ${ref("silver", "sku_sales_order")}  
+WHERE type='STORE_ADDED'
+${ when(incremental(), `AND DATE(publish_time) >= DATE_SUB(current_date, INTERVAL 1 DAY)`) }

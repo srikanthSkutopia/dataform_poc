@@ -1,8 +1,0 @@
-config {
-    type: "declaration", 
-    database: "skutopia-production",
-    schema: "pubsubprd",
-    name: "skutopia-messages-prd",
-    description: "Skutopia PubSub Event Messages"
-  }
- 

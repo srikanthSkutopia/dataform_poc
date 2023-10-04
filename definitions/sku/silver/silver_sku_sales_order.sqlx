@@ -1,0 +1,47 @@
+config {
+    type: "incremental", 
+    schema: "silver",
+    name: "sku_sales_order",
+    tags: "sku_order_pipeline",
+    description: "Standardized skutopia data",
+    disabled: false,
+    bigquery: {
+      partitionBy: "DATETIME_TRUNC(sys_extract_ts, MONTH)"
+    }
+}
+
+with base as (
+  /* De-dupe by message ID */
+  SELECT *,
+  row_number() over (partition by id order by updated_at desc) as rnum
+  FROM ${ref(dataform.projectConfig.vars.eventDataset, "sku_sales_order")} 
+  ${ when(incremental(), `WHERE publish_time > (SELECT MAX(publish_time) FROM ${self()})`) }
+  QUALIFY rnum=1
+)
+
+SELECT
+  id salesOrderId,
+  order_reference externalOrderReference,
+  store_id storeId, 
+  created_at createdAt,
+  `source` sourceSystem,
+  status orderStatus,
+  packing_status packingStatus,
+  payment_status paymentStatus,
+  total_cost totalCost,
+  total_price totalPrice,
+  pick_cost pickCost,
+  total_weight_gram totalWeightGram,
+  note,
+  customer_id customerId,
+  packaging_rule_id packagingRuleId,
+  line_items lineItems,
+  first_name firstName,
+  last_name lastName,
+  contact_number contactNumber,
+  billing_address_id billingAddressId,
+  shipping_address_id shippingAddressId,
+  updated_at updatedAt,
+  _airbyte_emitted_at sys_extract_ts,
+  ${utils.auditColumns()}
+FROM base

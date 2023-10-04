@@ -1,0 +1,54 @@
+config {
+    type: "incremental", 
+    schema: "silver",
+    name: "sku_events_2",
+    tags: "sku_events_2",
+    description: "Standardized waretopia events",
+    disabled: true,
+    bigquery: {
+      partitionBy: "DATETIME_TRUNC(publish_time, MONTH)",
+      clusterBy: ["type"]
+    }
+}
+
+with base as (
+  /* De-dupe by message ID */
+  SELECT JSON_VALUE(data, '$.type')  type, *,
+  row_number() over (partition by message_id order by publish_time desc) as rnum
+  FROM `skutopia-production.pubsubprd.skutopia-messages-prd`
+  ${ when(incremental(), `WHERE publish_time > (SELECT MAX(publish_time) FROM ${self()})`) }
+  QUALIFY rnum=1
+)
+
+SELECT 
+  data,
+  publish_time,
+  JSON_VALUE(data, '$.payload.salesOrder.id') orderId, 
+  JSON_VALUE(data, '$.payload.salesOrder.source') orderSource,  
+  JSON_VALUE(data, '$.payload.salesOrder.orderReference') orderReference, 
+  JSON_VALUE(data, '$.type') type,
+  JSON_VALUE(data, '$.payload.fulfilmentShipment.id') fulfilmentShipmentId,
+  JSON_VALUE(data, '$.payload.fulfilmentShipment.source') fulfilmentSource,
+  JSON_VALUE(data, '$.payload.fulfilmentShipment.isFcFulfilable') fcFulfilable, 
+  JSON_VALUE(data, '$.payload.organization.id') organisationId,
+  COALESCE(JSON_VALUE(data, '$.payload.fulfilmentShipment.trackingNumber'),JSON_VALUE(data, '$.payload.trackingNumber')) fulfilmentTrackingNumber, 
+  JSON_QUERY(data, '$.payload.fulfilmentShipments') fulfilmentShipments,
+  JSON_VALUE(data, '$.payload.fulfilmentShipments[0].status') fulfilmentStatus,
+  JSON_QUERY(data, '$.payload.senderAddress') senderAddress,
+  STRUCT (JSON_VALUE(data, '$.payload.store.id') as id, JSON_VALUE(data, '$.payload.store.name') as name, 
+    JSON_VALUE(data, '$.payload.store.isTest') as isTest,
+    JSON_VALUE(data, '$.payload.store.fbsEnabled') as fbsEnabled) store,
+  JSON_QUERY(data, '$.payload.lineItems') lineItems,
+  JSON_QUERY(data, '$.payload.salesOrder.shippingAddress') shippingAddress,
+  JSON_QUERY(data, '$.payload.rateRequest') rateRequest, 
+  JSON_QUERY(data, '$.payload.shippingRate') shippingRate, 
+  JSON_VALUE(data, '$.payload.shippingMethod') shippingMethod,
+  JSON_VALUE(data, '$.payload.carrier') carrier, 
+  STRUCT (JSON_VALUE(data, '$.payload.baseAmount.value') as value, 
+          JSON_VALUE(data, '$.payload.baseAmount.currency') as currency,
+          JSON_VALUE(data, '$.payload.additionalCharges.tax.value') as taxValue,
+          JSON_VALUE(data, '$.payload.additionalCharges.tax.currency') as taxCurrency
+          ) as baseAmount,
+  PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', JSON_VALUE(data, '$.payload.created_at')) payloadCreatedAt, 
+  ${utils.auditColumns()}
+FROM base

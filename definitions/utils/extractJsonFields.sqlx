@@ -1,0 +1,44 @@
+config {
+    type: "operations", 
+    schema: "silver", 
+    hasOutput: false,
+    disabled: false,
+    tags: "utils",
+    description: "Receive the JSON string and extract the attributes. Arrays are returned as string"
+}
+
+CREATE SCHEMA IF NOT EXISTS utils
+OPTIONS (
+    description = "Contains common utils (UDFs)",
+    location = "australia-southeast1"
+);
+
+CREATE OR REPLACE FUNCTION utils.extractJsonFields(jsonString STRING)
+ RETURNS ARRAY<STRUCT<key STRING, value STRING>>
+ LANGUAGE js AS """
+  function flattenObject(obj, prefix = '') {
+       for (var key in obj) {
+         if (obj.hasOwnProperty(key)) {
+           var value = obj[key];
+           if (typeof value === 'object' && !Array.isArray(value)) {
+             flattenObject(value, prefix + key + '.');
+           } else {
+             if (Array.isArray(value)) {
+               value = JSON.stringify(value);
+             }
+             result.push({key: prefix + key, value: value});
+           }
+         }
+       }
+     }
+
+   var result = [];
+   try {
+     var jsonObj = JSON.parse(jsonString);
+     flattenObject(jsonObj);
+   } catch (e) {
+        result.push({ key: 'error', value: 'JSON parsing error: ' + e.message });
+     // return [{key: "invalid", value: "123"}]
+   }
+   return result;
+ """;

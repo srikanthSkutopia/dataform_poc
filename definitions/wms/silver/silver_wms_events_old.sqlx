@@ -1,0 +1,114 @@
+ config {
+    type: "incremental", 
+    schema: "silver",
+    name: "wms_events_old",
+    tags: "wms_events_pipeline",
+    disabled: true,
+    description: "Standardized waretopia events",
+    bigquery: {
+      partitionBy: "DATETIME_TRUNC(publish_time, DAY)",
+      clusterBy: ["type"]
+    }
+}
+/* Temporary - exclude certain events */
+with exclusions as (
+  SELECT type_exclusion
+  FROM unnest(["ALL_TOTES_UNLINKED", "AUTOSTORE_HAND_PICKING_PICKLISTS_ASSIGNED_TO_TOTES", "AUTOSTORE_HAND_PICKING_PICKLISTS_UNASSIGNED_FROM_TOTES", "AUTOSTORE_HAND_PICKS_COMPLETED", "AUTOSTORE_HAND_PICK_ALLOCATED_ITEMS_RETRIEVED", "AUTOSTORE_PORTS_ADDED", "AUTOSTORE_PORT_CLOSED", "AUTOSTORE_PORT_OPENED", "AUTOSTORE_STARTED", "AUTOSTORE_STOPPED", "AUTOSTORE_UNREACHABLE", 
+          "BIN_ARRIVED", "BIN_EMPTINESS_CHECKED", "BIN_REQUESTED", "BIN_RETRIEVAL_TIMED_OUT", "CLOSE_BIN_FAILED"]) type_exclusion
+),
+base as (
+  /* De-dupe by message ID */
+  SELECT JSON_VALUE(data, '$.type')  type, *,
+  row_number() over (partition by message_id order by publish_time desc) as rnum
+  FROM ${ref(dataform.projectConfig.vars.eventDataset, dataform.projectConfig.vars.tableWaretopia)} 
+  WHERE JSON_VALUE(data, '$.type') not in (select type_exclusion from exclusions)
+  ${ when(incremental(), `AND publish_time > (SELECT MAX(publish_time) FROM ${self()})`) }
+  QUALIFY rnum=1
+)
+
+SELECT 
+  data,
+  PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez',JSON_VALUE(data, '$.created_at')) dataCreatedAt,
+  PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez',JSON_VALUE(data, '$.payload.created_at')) payloadCreatedAt,
+  type,
+  /* primary key in WMS */
+  CASE type
+    WHEN "PICK_COMPLETED" then  JSON_VALUE(data, '$.payload.pickLocations[0].fulfilmentOrderId')
+    WHEN "PARCEL_TYPE_SELECTED" then  JSON_VALUE(data, '$.payload.fulfilmentOrder.id')
+    WHEN "ORDER_PACKING_COMPLETED" then JSON_VALUE(data, '$.payload.fulfilmentOrder.id')
+    WHEN "PICK_ITEM_REMOVED_FROM_TOTE" then JSON_VALUE(data, '$.fulfilment_order_ids[0]')
+    WHEN "SHORT_PICK_RAISED" then JSON_VALUE(data, '$.fulfilment_order_ids[0]')
+    WHEN "FULFILMENT_ORDER_UPDATED" then JSON_VALUE(data, '$.payload.fulfilmentOrder.id')
+    WHEN "FULFILMENT_ORDER_REJECTED" then JSON_VALUE(data, '$.fulfilment_order_ids[0]')
+    WHEN "FULFILMENT_ORDER_ACCEPTED" then JSON_VALUE(data, '$.fulfilment_order_ids[0]')
+    ELSE JSON_VALUE(data, '$.payload.fulfilmentOrderId')
+    END  fulfilmentOrderId,
+
+  /* key to join with SSP */
+  CASE type
+    WHEN "PICK_COMPLETED" then  JSON_VALUE(data, '$.payload.pickLocations[0].externalFulfilmentId')
+    WHEN "PARCEL_TYPE_SELECTED" then JSON_VALUE(data, '$.payload.fulfilmentOrder.externalFulfilmentId')
+    WHEN "ORDER_PACKING_COMPLETED" then JSON_VALUE(data, '$.payload.fulfilmentOrder.externalFulfilmentId')
+    WHEN "FULFILMENT_ORDER_UPDATED" then JSON_VALUE(data, '$.payload.fulfilmentOrder.externalFulfilmentId')
+    ELSE  JSON_VALUE(data, '$.payload.externalFulfilmentId')  END fulfilmentShipmentId,
+  
+  CASE type
+    WHEN "FULFILMENT_ORDER_UPDATED" then JSON_VALUE(data, '$.payload.fulfilmentOrder.externalOrderReference')
+    ELSE JSON_VALUE(data, '$.payload.externalOrderReference')  END externalOrderReference,
+ 
+  CASE type
+    WHEN "FULFILMENT_ORDER_UPDATED" then JSON_VALUE(data, '$.payload.fulfilmentOrder.source')
+    ELSE JSON_VALUE(data, '$.payload.source')  END `source`,
+
+  CAST(
+  CASE type
+    WHEN "FULFILMENT_ORDER_UPDATED" then JSON_VALUE(data, '$.payload.fulfilmentOrder.isTest')
+    ELSE JSON_VALUE(data, '$.payload.isTest') END
+   as BOOL)  isTest, 
+  CASE type
+    WHEN "FULFILMENT_ORDER_UPDATED" then JSON_VALUE(data, '$.payload.fulfilmentOrder.merchantId')
+    ELSE JSON_VALUE(data, '$.payload.merchantId') END  merchantId,
+  
+  CASE type
+    WHEN "FULFILMENT_ORDER_UPDATED" then JSON_VALUE(data, '$.payload.fulfilmentOrder.merchantName')
+    ELSE JSON_VALUE(data, '$.payload.merchantName') END  merchantName, 
+  
+  cast(CASE type
+    WHEN "FULFILMENT_ORDER_UPDATED" then JSON_VALUE(data, '$.payload.fulfilmentOrder.isFcFulfilable')
+    ELSE JSON_VALUE(data, '$.payload.isFcFulfilable') END  as BOOL)   isFcFulfilable,
+
+  CASE type
+    WHEN "FULFILMENT_ORDER_UPDATED" then JSON_QUERY(data, '$.payload.fulfilmentOrder.lineItems')
+    ELSE JSON_QUERY(data, '$.payload.lineItems') END  lineItems,   
+
+  CASE type
+    WHEN "FULFILMENT_ORDER_UPDATED" then JSON_QUERY(data, '$.payload.fulfilmentOrder.customer')
+    ELSE JSON_QUERY(data, '$.payload.customer') END  customer,   
+ 
+  CASE type
+    WHEN "FULFILMENT_ORDER_UPDATED" then JSON_QUERY(data, '$.payload.fulfilmentOrder.address')
+    ELSE JSON_QUERY(data, '$.payload.address') END  address,   
+
+  CASE type
+    WHEN "FULFILMENT_ORDER_UPDATED" then JSON_VALUE(data, '$.payload.fulfilmentOrder.shippingMethod')
+    ELSE JSON_VALUE(data, '$.payload.shippingMethod') END  shippingMethod,   
+ 
+  /* used for FULFILMENT_ORDER_REJECTED */
+  JSON_QUERY(data, '$.payload.reason') reason,
+  JSON_VALUE(data, '$.payload.carrier')  carrier,
+  JSON_VALUE(data, '$.payload.serviceCode')  serviceCode, 
+  coalesce(JSON_VALUE(data, '$.payload.warehouse_id'),
+           JSON_VALUE(data, '$.warehouseId'))  warehouseId,
+  JSON_QUERY(data, '$.payload.labelPaths')  labelPaths,
+  JSON_VALUE(data, '$.payload.trackingNumber')  trackingNumber,
+  JSON_VALUE(data, '$.payload.pickLocations')  pickLocations,
+  /* For certain types like TASK_GROUP - contains multiple orderIds */
+  JSON_QUERY(data, '$.fulfilment_order_ids') fulfilmentOrderIds,
+/*  PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez',
+   CASE type
+    WHEN "FULFILMENT_ORDER_UPDATED" then JSON_VALUE(data, '$.payload.fulfilmentOrder.created_at')
+    ELSE JSON_VALUE(data, '$.created_at') END)  fulfilmentOrderCreated,   */
+  publish_time, 
+  ${utils.auditColumns()}
+FROM 
+  base

@@ -1,0 +1,34 @@
+config {
+    type: "incremental", 
+    schema: "gold",
+    name: "dim_wms_product",
+    tags: "wms_order_pipeline",
+    disabled: false,
+    description: "Contains all Product information at Store level",
+    uniqueKey: ["merchantId", "barcode"],
+    bigquery: { 
+      clusterBy: ["merchantId"]
+    }
+}
+
+SELECT  
+      JSON_VALUE(i.retailUnit.merchantId) merchantId,
+      JSON_VALUE(i.retailUnit.barcode) barcode,
+      JSON_VALUE(i.retailUnit.sku) sku,
+      JSON_VALUE(i.retailUnit.name) productName,
+      LAX_BOOL(payload.isTest) isTest,
+      LAX_FLOAT64(i.retailUnit.depthMm) depthMm,
+      LAX_FLOAT64(i.retailUnit.heightMm) heightMm,
+      LAX_FLOAT64(i.retailUnit.widthMm) widthMm,
+      LAX_FLOAT64(i.retailUnit.weightGrams) weightGrams,
+      JSON_VALUE(i.retailUnit.imageSrc) imageSrc,
+      JSON_VALUE(i.retailUnit.id) srcId,
+      /* LAX_INT64(i.retailUnit.externalId) externalId, */
+      JSON_VALUE(i.retailUnit.options[0]) options,
+      createdAt sys_extract_ts,
+      ${utils.auditColumns()}
+FROM  ${ref("silver", "wms_events")} , unnest(JSON_QUERY_ARRAY(payload.items)) i
+WHERE type='TRANSFER_CREATED'   
+${ when(incremental(), `AND DATE(sys_extract_ts) >= DATE_SUB(current_date, INTERVAL 1 DAY)`) }
+/* De-dupe */
+QUALIFY row_number() over (partition by merchantId, barcode order by createdAt)=1

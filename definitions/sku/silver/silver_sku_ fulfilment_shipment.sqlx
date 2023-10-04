@@ -1,0 +1,66 @@
+config {
+    type: "incremental", 
+    schema: "silver",
+    name: "sku_fulfilment_shipment",
+    tags: "sku_order_pipeline",
+    description: "Standardized skutopia sku_fulfilment_shipment",
+    disabled: false,
+    bigquery: {
+      partitionBy: "DATETIME_TRUNC(sys_extract_ts, MONTH)"
+    }
+}
+
+with base as (
+  /* De-dupe by message ID */
+  SELECT *,
+  row_number() over (partition by id order by updated_at desc) as rnum
+  FROM ${ref(dataform.projectConfig.vars.eventDataset, "sku_fulfilment_shipment")} 
+  ${ when(incremental(), `WHERE _airbyte_emitted_at > (SELECT MAX(sys_extract_ts) FROM ${self()})`) }
+  QUALIFY rnum=1
+)
+
+SELECT
+        id fulfilmentShipmentId,
+        rate_request_id rateRequestId,
+        atl_authority_to_leave atlAuthorityToLeave,
+        total_cost totalCost,
+        base_cost baseCost,
+        atl_age_verification_required atlAgeVerificationRequired,
+        created_at createdAt,
+        _ab_cdc_deleted_at abCdcDeletedAt,
+        source source,
+        error error,
+        shipping_margin_id shippingMarginId,
+        label_paths labelPaths,
+        location_id locationId,
+        total_margin totalMargin,
+        packing_slip_document_path packingSlipDocumentPath,
+        updated_at updatedAt,
+        sales_order_id salesOrderId,
+        label_last_downloaded_at labelLastDownloadedAt,
+        tracking_number trackingNumber,
+        delivered_at deliveredAt,
+        tracking_url trackingUrl,
+        store_id storeId,
+        shipped_at shippedAt,
+        atl_signature_required atlSignatureRequired,
+        selected_rate_id selectedRateId,
+        address_id addressId,
+        _ab_cdc_lsn abCdcLsn,
+        estimated_delivery_at estimatedDeliveryAt,
+        label_booked_at labelBookedAt,
+        atl_unattended_safety atlUnattendedSafety,
+        manifested_at manifestedAt,
+        carrier carrier,
+        service_type serviceType,
+        signature_upload_path signatureUploadPath,
+        _ab_cdc_updated_at abCdcUpdatedAt,
+        scheduled_pickup_date scheduledPickupDate,
+        fulfilment_service fulfilmentService,
+        photo_upload_paths photoUploadPaths,
+        manifest_id manifestId,
+        integrations integrations,
+        status status ,
+        _airbyte_emitted_at sys_extract_ts,
+        ${utils.auditColumns()}
+FROM base

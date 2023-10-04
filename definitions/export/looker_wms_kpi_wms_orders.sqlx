@@ -1,0 +1,12 @@
+config {
+    type: "table", 
+    schema: "export",
+    name: "looker_wms_kpi_dashboard_wms_orders",
+    tags: "wms_order_pipeline",
+    disabled: false,
+    description: "View for WMS KPI Dashboard"
+    
+}
+
+select  *
+from ${ref("mart", "orders")}  w

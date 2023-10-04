@@ -1,0 +1,7 @@
+config {
+    type: "declaration",  
+    schema: dataform.projectConfig.vars.eventDataset,
+    name: "sku_sales_order",
+    description: "Skutopia Sales order table. Populated by Airbyte"
+  }
+ 

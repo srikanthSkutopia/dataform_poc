@@ -1,6 +1,5 @@
 config { 
-    type: "declaration", 
-    database: dataform.projectConfig.vars.eventProject, 
+    type: "declaration",  
     schema: dataform.projectConfig.vars.eventDataset,
     name: dataform.projectConfig.vars.tableWaretopia,
     description: "Waretopia PubSub Event Messages"

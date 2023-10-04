@@ -1,0 +1,50 @@
+config {
+    type: "operations",  
+    hasOutput: false,
+    disabled: false,
+    tags: "utils_datasets",
+    description: "Dataset creation"
+}
+
+CREATE SCHEMA IF NOT EXISTS utils
+OPTIONS (
+    description = "Contains common utils (UDFs)",
+    location = "australia-southeast1"
+);
+
+CREATE SCHEMA IF NOT EXISTS bronze
+OPTIONS (
+    description = "Landing layer. Contains external source data",
+    location = "australia-southeast1"
+);
+
+
+CREATE SCHEMA IF NOT EXISTS silver
+OPTIONS (
+    description = "Standardized source data",
+    location = "australia-southeast1"
+);
+
+CREATE SCHEMA IF NOT EXISTS gold
+OPTIONS (
+    description = "Base dimensions & facts. Dimensional models",
+    location = "australia-southeast1"
+);
+
+CREATE SCHEMA IF NOT EXISTS export
+OPTIONS (
+    description = "Tables to exported out. Visualization, export staging",
+    location = "australia-southeast1"
+);
+
+CREATE SCHEMA IF NOT EXISTS staging
+OPTIONS (
+    description = "Temporary staging area. ",
+    location = "australia-southeast1"
+);
+
+CREATE SCHEMA IF NOT EXISTS dataform_assertions
+OPTIONS (
+    description = "Dataform assertions models ",
+    location = "australia-southeast1"
+);

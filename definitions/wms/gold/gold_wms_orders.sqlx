@@ -1,0 +1,141 @@
+
+config {
+    type: "incremental", 
+    schema: "gold",
+    name: "wms_orders",
+    tags: "wms_order_pipeline",
+    description: "Order Snapshot",
+    disabled: false,
+    bigquery: {
+      partitionBy: "DATETIME_TRUNC(order_accepted_ts, MONTH)"
+    }
+}
+ 
+with base as (  
+    select 
+          * except (createdAt), 
+          last_value(type) over (partition by fulfilmentOrderId order by createdAt rows between current row and unbounded following) currentStatus,
+    from  ${ref("silver", "wms_events")} 
+    -- where --externalOrderReference='#22312' and 
+    -- where  to_json_string(payload) like '%31MA54BP3X%' or  to_json_string(payload) like '%3SB7P8G29B%'
+),
+stage_1 as (  
+    with accepted as ( 
+        select fulfilmentOrderId, externalOrderReference,  fulfilmentShipmentId, warehouse_id, currentStatus, 
+        CAST(JSON_VALUE(payload.isTest) as BOOL) isTest,
+        JSON_VALUE(payload.address.countryCode) country, 
+        JSON_VALUE(payload.merchantName) merchantName,
+        CAST(JSON_VALUE(payload.isFcFulfilable)  as BOOL) isFcFulfilable,
+        createdAtLocal order_accepted_ts,  
+        JSON_VALUE(payload.merchantId) merchantId,
+        JSON_VALUE(payload.shippingMethod) shippingMethod,
+        JSON_VALUE(l.barcode) barcode,
+        LAX_FLOAT64(l.quantity) quantity, 
+        from base
+        LEFT JOIN unnest(JSON_QUERY_ARRAY(payload.lineItems)) l
+        where type='FULFILMENT_ORDER_ACCEPTED'
+    ) 
+
+    /* Get line level aggregation done */
+    select s.* except (barcode, quantity), 
+    SUM(quantity) totalQuantity,
+    array_agg((select as struct s.barcode, p.productName, p.sku, s.quantity)) lineItems
+    from accepted s
+    LEFT JOIN ${ref("gold", "dim_wms_product")}  p using (merchantId, barcode)
+    group by 1,2,3,4,5,6,7,8,9,10,11,12
+),
+/* Get picking info from TOTEs */
+stage_2 as ( 
+    select json_value(currOrder) fulfilmentOrderId, 
+    createdAtLocal pick_completed_ts, 
+    JSON_VALUE(payload.portId) pickPortId
+    from base, unnest(json_query_array(payload.fulfilmentOrderIds)) currOrder
+    where  type='TOTES_PICKING_COMPLETED'
+),
+/* Get individual lifecycle timestamp */
+stage_all as (  
+
+    with inp as ( 
+        select fulfilmentOrderId, 
+        concat(lower(type),"_ts") colName,
+        createdAtLocal,
+        JSON_VALUE(payload.stationId) packingStationId, /*PACKING_TOTE_SCANNED*/
+        JSON_VALUE(payload.carrier) packingCarrier, /*SHIPPING_RATE_SELECTED */
+        JSON_VALUE(payload.parcelSize) packingParcelSize, /* PARCEL_TYPE_SELECTED */
+        TIMESTAMP(DATETIME(PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez',JSON_VALUE(payload.deadline)), 'Australia/Sydney')) pickingPicklistDeadline /* PICKLIST_CREATED */
+
+        from base
+      where type in ( 'PICKLIST_CREATED', 'SHIPPING_RATE_SELECTED','SHIPPING_LABEL_RECEIVED', 'PACKING_TOTE_SCANNED', 'PACKING_TOTE_CHECK_COMPLETED', 'PARCEL_TYPE_SELECTED', 'LABEL_PRINTING_STARTED', 'LABEL_PRINTING_COMPLETED', 'ORDER_PACKED', 'PARCEL_SORTED', 'ORDER_PACKING_COMPLETED', 'FULFILMENT_ORDER_DISPATCHED', 'PARCEL_TRANSFERRED_TO_TROUBLESHOOT', 'FULFILMENT_ORDER_CANCELLED', 'FULFILMENT_ORDER_REJECTED' )
+    ),
+    pivotRows as (  
+        select * from inp
+        pivot(MAX(createdAtLocal) for colName in ('picklist_created_ts', 'shipping_rate_selected_ts', 'shipping_label_received_ts', "packing_tote_scanned_ts", "packing_tote_check_completed_ts", "parcel_type_selected_ts", "label_printing_started_ts", "label_printing_completed_ts", "order_packed_ts", "parcel_sorted_ts", "order_packing_completed_ts", "fulfilment_order_dispatched_ts", "parcel_transferred_to_troubleshoot_ts", "fulfilment_order_cancelled_ts", "fulfilment_order_rejected_ts"))
+    )
+
+    select fulfilmentOrderId, 
+    max (packingStationId) packingStationId,
+    max (packingCarrier) packingCarrier,
+    max (packingParcelSize) packingParcelSize,
+    max (pickingPicklistDeadline) pickingPicklistDeadline,
+    max (picklist_created_ts) picklist_created_ts,
+    max (shipping_rate_selected_ts) shipping_rate_selected_ts,
+    max (shipping_label_received_ts) shipping_label_received_ts,
+    max (packing_tote_scanned_ts) packing_tote_scanned_ts,
+    max (packing_tote_check_completed_ts) packing_tote_check_completed_ts,
+    max (parcel_type_selected_ts) parcel_type_selected_ts,
+    max (label_printing_started_ts) label_printing_started_ts,
+    max (label_printing_completed_ts) label_printing_completed_ts,
+    max (order_packed_ts) order_packed_ts,
+    max (parcel_sorted_ts) parcel_sorted_ts,
+    max (order_packing_completed_ts) order_packing_completed_ts,
+    max (fulfilment_order_dispatched_ts) fulfilment_order_dispatched_ts,
+    max (parcel_transferred_to_troubleshoot_ts) parcel_transferred_to_troubleshoot_ts,
+    max (fulfilment_order_cancelled_ts) fulfilment_order_cancelled_ts,
+    max (fulfilment_order_rejected_ts) fulfilment_order_rejected_ts
+
+    from pivotRows
+    group by 1 
+)
+SELECT  
+    fulfilmentOrderId,
+    externalOrderReference,
+    fulfilmentShipmentId,
+    warehouse_id warehouseId,
+    currentStatus,
+    isTest,
+    country,
+    merchantName,
+    isFcFulfilable,
+    merchantId ,
+    shippingMethod,
+    totalQuantity,
+    lineItems,
+    /*  quantityPicked, */
+    pickPortId,
+    packingStationId,
+    packingCarrier,
+    packingParcelSize,
+    date(order_accepted_ts) order_created_dt,
+    order_accepted_ts,
+    pick_completed_ts,
+    /* pickingPicklistDeadline, */
+    shipping_rate_selected_ts,
+    shipping_label_received_ts,
+    packing_tote_scanned_ts,
+    packing_tote_check_completed_ts,
+    parcel_type_selected_ts,
+    label_printing_started_ts,
+    label_printing_completed_ts,
+    order_packed_ts,
+    parcel_sorted_ts,
+    order_packing_completed_ts,
+    fulfilment_order_dispatched_ts,
+    parcel_transferred_to_troubleshoot_ts,
+    fulfilment_order_cancelled_ts,
+    fulfilment_order_rejected_ts,
+    timestamp(datetime(current_timestamp, 'Australia/Sydney')) sys_updated_ts
+
+from stage_1 
+left join stage_2 using (fulfilmentOrderId)
+left join stage_all using (fulfilmentOrderId)
+where isTest = False

@@ -1,44 +1,78 @@
-config {
+ config {
     type: "incremental", 
-    schema: "siver",
+    schema: "silver",
     name: "wms_events",
-    tags: "wms_events_pipeline",
+    tags: "wms_order_pipeline",
     description: "Standardized waretopia events",
+    disabled: false,
     bigquery: {
-      partitionBy: "DATETIME_TRUNC(publish_time, MONTH)",
+      partitionBy: "DATETIME_TRUNC(sys_extract_ts, DAY)",
       clusterBy: ["type"]
     }
 }
+/* Temporary - exclude certain events */
+with exclusions as (
+  SELECT type_exclusion
+  FROM unnest(["ALL_TOTES_UNLINKED", "AUTOSTORE_HAND_PICKING_PICKLISTS_ASSIGNED_TO_TOTES", "AUTOSTORE_HAND_PICKING_PICKLISTS_UNASSIGNED_FROM_TOTES", "AUTOSTORE_HAND_PICKS_COMPLETED", "AUTOSTORE_HAND_PICK_ALLOCATED_ITEMS_RETRIEVED", "AUTOSTORE_PORTS_ADDED", "AUTOSTORE_PORT_CLOSED", "AUTOSTORE_PORT_OPENED", "AUTOSTORE_STARTED", "AUTOSTORE_STOPPED", "AUTOSTORE_UNREACHABLE", 
+          "BIN_ARRIVED", "BIN_EMPTINESS_CHECKED", "BIN_REQUESTED", "BIN_RETRIEVAL_TIMED_OUT", "CLOSE_BIN_FAILED", "ORDER_ITEMS_UNALLOCATED"]) type_exclusion
+),
 
+base as (
+  /* De-dupe by message ID */
+  SELECT *,
+  row_number() over (partition by id order by updated_at desc) as rnum,
+  FROM ${ref(dataform.projectConfig.vars.eventDataset, dataform.projectConfig.vars.tableWaretopia)} 
+  WHERE type not in (select type_exclusion from exclusions)
+  and warehouse_id = 'WPKN0FGBRY' AND created_at > '2022-08-18'
+  ${ when(incremental(), `AND updated_at > (SELECT MAX(sys_extract_ts) FROM ${self()})`) }
+  QUALIFY rnum=1
+),
+base_2 as (  
 SELECT 
-  json_value(data, '$.payload.salesOrder.id') orderId, 
-  json_value(data, '$.payload.salesOrder.source') orderSource, 
-  json_value(data, '$.payload.salesOrder.orderReference') orderReference, 
-  json_value(data, '$.payload.fulfilmentShipment.isFcFulfilable') fcFulfilable, 
-  json_value(data, '$.payload.organization.id') organisationId,
-  json_value(data, '$.type') type,
-  json_value(data, '$.payload.fulfilmentShipment.id') fulfilmentShipmentId,
-  json_value(data, '$.payload.fulfilmentShipment.source') fulfilmentSource,
-  coalesce(json_value(data, '$.payload.fulfilmentShipment.trackingNumber'),json_value(data, '$.payload.trackingNumber')) fulfilmentTrackingNumber, 
-  json_query(data, '$.payload.fulfilmentShipments') fulfilmentShipments,
-  json_value(data, '$.payload.fulfilmentShipments[0].status') fulfilmentStatus,
-  json_query(data, '$.payload.senderAddress') senderAddress,
-  struct (json_value(data, '$.payload.store.id') as id, json_value(data, '$.payload.store.name') as name, 
-    json_value(data, '$.payload.store.isTest') as isTest,
-    json_value(data, '$.payload.store.fbsEnabled') as fbsEnabled) store,
-  json_query(data, '$.payload.lineItems') lineItems,
-  json_query(data, '$.payload.salesOrder.shippingAddress') shippingAddress,
-  json_query(data, '$.payload.rateRequest') rateRequest, 
-  json_query(data, '$.payload.shippingRate') shippingRate, 
-  json_value(data, '$.payload.shippingMethod') shippingMethod,
-  json_value(data, '$.payload.carrier') carrier, 
-  struct (json_value(data, '$.payload.baseAmount.value') as value, 
-          json_value(data, '$.payload.baseAmount.currency') as currency,
-          json_value(data, '$.payload.additionalCharges.tax.value') as taxValue,
-          json_value(data, '$.payload.additionalCharges.tax.currency') as taxCurrency
-          ) as baseAmount,
-  publish_time,
-  data payload,
+  /* primary key in WMS */
+  CASE type
+    /* WHEN "PICK_COMPLETED"              then JSON_VALUE(payload.pickLocations[0].fulfilmentOrderId) */
+    WHEN "PARCEL_TYPE_SELECTED"        then JSON_VALUE(payload.fulfilmentOrderId)
+    WHEN "ORDER_PACKING_COMPLETED"     then JSON_VALUE(payload.fulfilmentOrderId)
+    WHEN "PICK_ITEM_REMOVED_FROM_TOTE" then JSON_VALUE(payload.fulfilment_order_ids[0])
+    WHEN "SHORT_PICK_RAISED"           then JSON_VALUE(payload.fulfilment_order_ids[0])
+    WHEN "FULFILMENT_ORDER_UPDATED"    then JSON_VALUE(payload.fulfilmentOrder.id)
+    WHEN "FULFILMENT_ORDER_REJECTED"   then JSON_VALUE(payload.fulfilmentOrder.id)
+    WHEN "FULFILMENT_ORDER_ACCEPTED"   then JSON_VALUE(payload.id)
+    WHEN "PARCEL_SORTED"               then JSON_VALUE(payload.orderId)
+    WHEN "PACKING_TOTE_SCANNED"        then JSON_VALUE(payload.orderId)
+    WHEN "PARCEL_TRANSFERRED_TO_TROUBLESHOOT" then JSON_VALUE(payload.orderId)
+    ELSE JSON_VALUE(payload.fulfilmentOrderId)
+    END  fulfilmentOrderId,
+
+  /* key to join with SSP */
+  CASE type
+    /* WHEN "PICK_COMPLETED" then  JSON_VALUE(payload.pickLocations[0].externalFulfilmentId) */
+    WHEN "PARCEL_TYPE_SELECTED" then JSON_VALUE(payload.fulfilmentOrder.externalFulfilmentId)
+    WHEN "ORDER_PACKING_COMPLETED" then JSON_VALUE(payload.fulfilmentOrder.externalFulfilmentId)
+    WHEN "FULFILMENT_ORDER_UPDATED" then JSON_VALUE(payload.fulfilmentOrder.externalFulfilmentId)
+    WHEN "FULFILMENT_ORDER_REJECTED" then JSON_VALUE(payload.fulfilmentOrder.externalFulfilmentId)
+    WHEN "FULFILMENT_ORDER_CANCEL_REJECTED" then JSON_VALUE(payload.fulfilmentOrder.externalFulfilmentId)
+    ELSE  JSON_VALUE(payload.externalFulfilmentId)  END fulfilmentShipmentId,
+  
+  CASE type
+    WHEN "FULFILMENT_ORDER_UPDATED" then JSON_VALUE(payload.fulfilmentOrder.externalOrderReference)
+    WHEN "FULFILMENT_ORDER_REJECTED" then JSON_VALUE(payload.fulfilmentOrder.externalOrderReference) 
+    ELSE JSON_VALUE(payload.externalOrderReference)  END externalOrderReference,
+  warehouse_id,
+  created_at createdAt, 
+  timestamp(datetime(created_at, 'Australia/Sydney')) createdAtLocal,
+  type,
+  utils.extractJsonFields(to_json_string(payload)) attributes,
+  payload,
+  id sourceRowId,
+  updated_at sys_extract_ts, 
   ${utils.auditColumns()}
-FROM ${ref(dataform.projectConfig.vars.eventDataset, dataform.projectConfig.vars.tableWaretopia)} 
-${ when(incremental(), `WHERE timestamp > (SELECT MAX(publish_time) FROM ${self()})`) }
+FROM 
+  base
+)
+
+/* TODO - for now - Get only 1 row per orderId & type */
+select *
+FROM base_2
+QUALIFY if(fulfilmentOrderId is null, 1, row_number() over (partition by fulfilmentOrderId, type order by createdAt desc))=1

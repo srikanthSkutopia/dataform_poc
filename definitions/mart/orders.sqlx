@@ -1,0 +1,25 @@
+config {
+    type: "table", 
+    schema: "mart",
+    name: "orders",
+    tags: "wms_order_pipeline",
+    disabled: false,
+    description: "Consolidated Order Table. SSP columns are eventually consistant"
+}
+
+select 
+s.salesOrderId, s.createdAt sspCreatedAt, s.orderStatus, s.totalPrice,  
+w.*, 
+/* if(parcel_transferred_to_troubleshoot_ts is not null, true, false) troubleshoot, */
+IF (
+ order_packing_completed_ts is null  
+ and fulfilment_order_dispatched_ts is null 
+ and currentStatus not in ('FULFILMENT_ORDER_CANCEL_REJECTED', 'FULFILMENT_ORDER_CANCELLED', 'FULFILMENT_ORDER_MANUALLY_DISPATCHED')
+ and parcel_transferred_to_troubleshoot_ts is null  /* non troubleshoot orders */
+ -- and currentStatus <> 'FULFILMENT_ORDER_REJECTED' /* rejected later at some point. TBD */
+ and fulfilment_order_cancelled_ts is null /* Tanya's input. Avoid hacky orders (that have been shipped out using a new/different fulfilment ID) */
+ ,true, false) pendingOrder
+from ${ref("gold", "wms_orders")}  w
+LEFT JOIN ${ref("gold", "sku_orders")} s using (fulfilmentShipmentId)
+where 
+ order_created_dt > '2023-04-24'  /* lots of manual WMS operations prior to this date  */

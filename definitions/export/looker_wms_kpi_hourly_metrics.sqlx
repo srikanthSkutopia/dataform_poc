@@ -1,0 +1,26 @@
+config {
+    type: "incremental", 
+    schema: "export",
+    name: "looker_wms_kpi_hourly_metrics",
+    tags: "wms_order_pipeline",
+    disabled: false,
+    description: "Table for WMS KPI Dashboard containing hourly metrics",
+    uniqueKey: ["merchantName", "businessDate", "businessHour"]
+}
+
+with base as ( 
+    SELECT  merchantName,
+    agg,
+    count(1) total
+    FROM ${ref("mart", "orders")},
+    unnest([ 
+            concat('Accepted,', format_date('%F, %H',  order_accepted_ts)),
+            concat('Picked,',format_date('%F, %H',  pick_completed_ts)), 
+            concat('Packed, ',format_date('%F, %H',  order_packing_completed_ts))]) agg
+    group by 1,2
+)
+SELECT  merchantName, split(agg, ",")[0] type,  
+        parse_date('%Y-%m-%d',split(agg, ",")[1]) businessDate, 
+        cast(split(agg, ',')[2] as INT64)  businessHour,
+        total
+FROM base
