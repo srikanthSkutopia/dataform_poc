@@ -15,3 +15,5 @@ ${utils.auditColumns()}
 from 
  ${ref("silver", "sku_sales_order")}    so
 LEFT JOIN  ${ref("silver", "sku_fulfilment_shipment")} fs  using (salesOrderId)
+where /* fs.source != 'EXTERNAL' and */
+ fs.status != 'DRAFT'

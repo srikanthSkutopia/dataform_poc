@@ -5,6 +5,7 @@ config {
     tags: "sku_order_pipeline",
     description: "Standardized skutopia data",
     disabled: false,
+    uniqueKey: ["salesOrderId"],
     bigquery: {
       partitionBy: "DATETIME_TRUNC(sys_extract_ts, MONTH)"
     }
@@ -15,7 +16,7 @@ with base as (
   SELECT *,
   row_number() over (partition by id order by updated_at desc) as rnum
   FROM ${ref(dataform.projectConfig.vars.eventDataset, "sku_sales_order")} 
-  ${ when(incremental(), `WHERE publish_time > (SELECT MAX(publish_time) FROM ${self()})`) }
+  ${ when(incremental(), `WHERE _airbyte_emitted_at > (SELECT MAX(sys_extract_ts) FROM ${self()})`) }
   QUALIFY rnum=1
 )
 

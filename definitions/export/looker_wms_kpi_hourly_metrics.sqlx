@@ -5,22 +5,61 @@ config {
     tags: "wms_order_pipeline",
     disabled: false,
     description: "Table for WMS KPI Dashboard containing hourly metrics",
-    uniqueKey: ["merchantName", "businessDate", "businessHour"]
+    uniqueKey: ["merchantName", "businessDate", "businessHour", "type"]
 }
+
+
+/* Hourly KPI metrics at Merchant level.
+    * For each order, get the date/hour for Accepted, Picked & Packed event. Aggregate it at Merchant level
+    * calculate the pendingFlag count at hourly level (Total).
+ */
 
 with base as ( 
     SELECT  merchantName,
     agg,
-    count(1) total
+    count(1) total,
+    sum(totalQuantity) totalQuantity
     FROM ${ref("mart", "orders")},
     unnest([ 
             concat('Accepted,', format_date('%F, %H',  order_accepted_ts)),
             concat('Picked,',format_date('%F, %H',  pick_completed_ts)), 
-            concat('Packed, ',format_date('%F, %H',  order_packing_completed_ts))]) agg
-    group by 1,2
-)
-SELECT  merchantName, split(agg, ",")[0] type,  
+            concat('Packed, ',format_date('%F, %H',  order_packing_completed_ts))
+            ]) agg
+  where agg is not null 
+  /* For new orders - Only those raised within SLA time (12 PM) should be counted */
+  and if (STARTS_WITH(agg,"Accepted"),SLAFlag,TRUE)
+  /* and merchantName='LWLSS'  and date(order_accepted_ts)='2023-10-04' */
+  group by 1,2
+),
+backlog as (
+    SELECT 
+            merchantName,
+            "Backlog" type,
+            CURRENT_DATE("Australia/Sydney") businessDate,
+            0 businessHour,
+            COUNT(1) total,
+            sum(totalQuantity) totalQuantity
+    FROM ${ref("stage", "wms_orders_eod")}
+    WHERE pendingFlag
+    GROUP BY 1,2,3,4
+),
+
+joined as (
+    SELECT  
+        merchantName, 
+        split(agg, ",")[0] type,  
         parse_date('%Y-%m-%d',split(agg, ",")[1]) businessDate, 
         cast(split(agg, ',')[2] as INT64)  businessHour,
-        total
-FROM base
+        total,
+        totalQuantity 
+    FROM base
+
+    UNION All
+
+    SELECT *
+    FROM backlog
+)
+
+select *, 
+       current_timestamp sys_updated_ts 
+from joined

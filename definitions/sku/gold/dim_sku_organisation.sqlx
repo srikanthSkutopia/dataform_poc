@@ -13,8 +13,9 @@ SELECT DISTINCT
   json_value(data, '$.payload.organization.name') orgName, 
   cast(json_value(data, '$.payload.organization.isFbs') as BOOL) isFbs, 
   json_value(data, '$.payload.organization.ownerUserId') ownerUserId, 
+  sys_extract_ts sys_extract_ts
   ${utils.auditColumns()}
 FROM 
      ${ref("silver", "sku_sales_order")}  
 WHERE type='ORGANIZATION_REGISTERED'
-${ when(incremental(), `AND DATE(publish_time) >= DATE_SUB(current_date, INTERVAL 1 DAY)`) }
+${ when(incremental(), `AND DATE(sys_extract_ts) >= DATE_SUB(current_date, INTERVAL 1 DAY)`) }

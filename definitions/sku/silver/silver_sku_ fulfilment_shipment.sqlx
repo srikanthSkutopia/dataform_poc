@@ -5,6 +5,7 @@ config {
     tags: "sku_order_pipeline",
     description: "Standardized skutopia sku_fulfilment_shipment",
     disabled: false,
+    uniqueKey: ["fulfilmentShipmentId"],
     bigquery: {
       partitionBy: "DATETIME_TRUNC(sys_extract_ts, MONTH)"
     }

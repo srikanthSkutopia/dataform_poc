@@ -1,0 +1,25 @@
+config {
+    type: "incremental", 
+    schema: "mart",
+    name: "wms_stock_movement",
+    tags: "wms_order_pipeline_notrequired",
+    disabled: false,
+    description: "Merchant wise stock movement at day level"
+}
+
+SELECT
+ merchantName, 
+ date(order_accepted_ts) businessDate,
+ count(1) totalOrdersCreated,
+ count(1) totalOrdersPacked,
+ COUNTIF(pendingFlag) totalPendingEOD,
+ sum(totalQuantity) totalpendingProductsEOD,
+ ${utils.auditColumns()}
+FROM
+  ${ ref("mart", "orders")}   
+  /* If incremental, run this only once a day before business hours (eg: 8 AM)*/
+  ${ when(incremental(), `WHERE date(order_accepted_ts) = CURRENT_DATE("Australia/Sydney") and extract(hour from TIMESTAMP(DATETIME("Australia/Sydney")))=8 AND 
+                          CURRENT_DATE("Australia/Sydney") != (select max(date(sys_update_ts)) from {self()})`) }
+
+    
+GROUP BY 1,2 

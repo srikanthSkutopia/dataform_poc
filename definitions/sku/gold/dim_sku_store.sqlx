@@ -22,6 +22,7 @@ SELECT DISTINCT
   json_value(data, '$.payload.store.includeInReporting') includeInReporting,
   json_value(data, '$.payload.store.useBrandedReturnsPortal') useBrandedReturnsPortal,
   json_value(data, '$.payload.store.useBrandedTrackingPortal') useBrandedTrackingPortal,
+  sys_extract_ts,
   ${utils.auditColumns()}
 FROM 
      ${ref("silver", "sku_sales_order")}  

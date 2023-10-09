@@ -1,20 +1,32 @@
 config {
     type: "table", 
-    schema: "gold",
-    name: "wms_orders",
-    tags: "wms_order_pipeline",
-    description: "Order Snapshot",
+    schema: "stage",
+    name: "wms_orders_eod",
+    tags: "wms_order_pipeline_eod",
+    description: "Order Snapshot - Previous day. Run only once at 1 AM",
     disabled: false,
     bigquery: {
       partitionBy: "DATETIME_TRUNC(order_accepted_ts, MONTH)"
     }
 }
+/* Get last working day */
+with previous_date as (
+    select dateId 
+    from  `gold.dim_date`
+    where dateId < CURRENT_DATE("Australia/Sydney") and weekendFlag = False and publicHolidayFlag = False
+    order by 1 desc
+    limit 1 
+),
 
+silver as ( 
 with base as (  
     select 
-          * except (createdAt), 
+          s.* except (createdAt), 
           last_value(type) over (partition by fulfilmentOrderId order by createdAt rows between current row and unbounded following) currentStatus,
-    from  ${ref("silver", "wms_events")}  
+    from  ${ref("silver", "wms_events")}  s
+    inner join previous_date d  
+    /* Only read data until end of day */
+    on date(sys_extract_ts) <= d.dateId
 ),
 stage_1 as (  
     with accepted as ( 
@@ -137,3 +149,36 @@ from stage_1
 left join stage_2 using (fulfilmentOrderId)
 left join stage_all using (fulfilmentOrderId)
 where isTest = False
+),
+gold as (
+    
+    SELECT 
+
+    s.salesOrderId, s.createdAt sspCreatedAt, s.orderStatus, s.totalPrice,  
+    w.*, 
+    /* if(parcel_transferred_to_troubleshoot_ts is not null, true, false) troubleshoot, */
+    IF (
+      order_packing_completed_ts is null  
+      AND fulfilment_order_dispatched_ts is null 
+      AND currentStatus not in ('FULFILMENT_ORDER_REJECTED', 'FULFILMENT_ORDER_CANCEL_REJECTED', 'FULFILMENT_ORDER_CANCELLED', 'FULFILMENT_ORDER_MANUALLY_DISPATCHED')
+      AND parcel_transferred_to_troubleshoot_ts is null     /* non troubleshoot orders */
+      -- and currentStatus <> 'FULFILMENT_ORDER_REJECTED'   /* rejected later at some point. TBD */
+      AND fulfilment_order_cancelled_ts is null             /* Tanya's input. Avoid hacky orders (that have been shipped out using a new/different fulfilment ID) */
+      ,TRUE, FALSE
+    ) pendingFlag,
+    
+    /* Only for same day. TODO - what about orders received over weekend & public holiday ?  */
+    CASE 
+      WHEN DATE(order_accepted_ts) = current_date("Australia/Sydney") AND TIME(order_accepted_ts) <= '12:00:00'  THEN TRUE 
+      ELSE FALSE
+    END SLAFlag
+
+FROM silver w
+LEFT JOIN ${ref("gold", "sku_orders")} s USING (fulfilmentShipmentId)
+WHERE   
+      /* lots of manual WMS operations prior to this date  */
+      order_created_dt > '2023-04-24'
+)
+
+select *
+from gold

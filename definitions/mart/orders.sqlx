@@ -4,22 +4,32 @@ config {
     name: "orders",
     tags: "wms_order_pipeline",
     disabled: false,
-    description: "Consolidated Order Table. SSP columns are eventually consistant"
+    description: "Consolidated Snapshot Order Table. SSP columns are eventually consistant"
 }
 
-select 
-s.salesOrderId, s.createdAt sspCreatedAt, s.orderStatus, s.totalPrice,  
-w.*, 
-/* if(parcel_transferred_to_troubleshoot_ts is not null, true, false) troubleshoot, */
-IF (
- order_packing_completed_ts is null  
- and fulfilment_order_dispatched_ts is null 
- and currentStatus not in ('FULFILMENT_ORDER_CANCEL_REJECTED', 'FULFILMENT_ORDER_CANCELLED', 'FULFILMENT_ORDER_MANUALLY_DISPATCHED')
- and parcel_transferred_to_troubleshoot_ts is null  /* non troubleshoot orders */
- -- and currentStatus <> 'FULFILMENT_ORDER_REJECTED' /* rejected later at some point. TBD */
- and fulfilment_order_cancelled_ts is null /* Tanya's input. Avoid hacky orders (that have been shipped out using a new/different fulfilment ID) */
- ,true, false) pendingOrder
-from ${ref("gold", "wms_orders")}  w
-LEFT JOIN ${ref("gold", "sku_orders")} s using (fulfilmentShipmentId)
-where 
- order_created_dt > '2023-04-24'  /* lots of manual WMS operations prior to this date  */
+SELECT 
+
+    s.salesOrderId, s.createdAt sspCreatedAt, s.orderStatus, s.totalPrice,  
+    w.*, 
+    /* if(parcel_transferred_to_troubleshoot_ts is not null, true, false) troubleshoot, */
+    IF (
+      order_packing_completed_ts is null  
+      AND fulfilment_order_dispatched_ts is null 
+      AND currentStatus not in ('FULFILMENT_ORDER_REJECTED', 'FULFILMENT_ORDER_CANCEL_REJECTED', 'FULFILMENT_ORDER_CANCELLED', 'FULFILMENT_ORDER_MANUALLY_DISPATCHED')
+      AND parcel_transferred_to_troubleshoot_ts is null     /* non troubleshoot orders */
+      -- and currentStatus <> 'FULFILMENT_ORDER_REJECTED'   /* rejected later at some point. TBD */
+      AND fulfilment_order_cancelled_ts is null             /* Tanya's input. Avoid hacky orders (that have been shipped out using a new/different fulfilment ID) */
+      ,TRUE, FALSE
+    ) pendingFlag,
+    
+    /* Only for same day. TODO - what about orders received over weekend & public holiday ?  */
+    CASE 
+      WHEN DATE(order_accepted_ts) = current_date("Australia/Sydney") AND TIME(order_accepted_ts) <= '12:00:00'  THEN TRUE 
+      ELSE FALSE
+    END SLAFlag
+
+FROM ${ref("gold", "wms_orders")}  w
+LEFT JOIN ${ref("gold", "sku_orders")} s USING (fulfilmentShipmentId)
+WHERE   
+      /* lots of manual WMS operations prior to this date  */
+      order_created_dt > '2023-04-24'
